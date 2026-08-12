@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from backtest import pip_size
 
 STATE_FILE = Path(__file__).parent.parent / "paper_trades.json"
-RISK_PER_TRADE = 0.02   # 2% of capital per trade
+RISK_PER_TRADE = 0.05   # 5% of capital per trade
 INITIAL_CAPITAL = 10_000.0
 
 

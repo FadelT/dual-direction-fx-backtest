@@ -9,8 +9,8 @@
       "stop": 64360.970693,
       "tp": 62207.88792,
       "stop_pips": 538.3,
-      "size": 0.37156,
-      "risk_dollar": 200.0,
+      "size": 0.928901,
+      "risk_dollar": 500.0,
       "capital_at_open": 10000.0,
       "status": "open"
     },
@@ -23,8 +23,8 @@
       "stop": 6.330258,
       "tp": 5.989226,
       "stop_pips": 852.6,
-      "size": 2345.82092,
-      "risk_dollar": 200.0,
+      "size": 5864.5523,
+      "risk_dollar": 500.0,
       "capital_at_open": 10000.0,
       "status": "open"
     }
