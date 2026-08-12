@@ -44,36 +44,67 @@ DEFAULT_PARAMS = {
 }
 
 
-def fetch_recent_bars(symbol: str, n: int = 500) -> pd.DataFrame:
-    url = "https://api.binance.com/api/v3/klines"
-    rows = []
-    end_ms = int(datetime.now().timestamp() * 1000)
-    start_ms = end_ms - n * 14_400_000  # each H4 bar = 14_400_000 ms
+# Binance uses BTCUSDT; Kraken uses XBTUSDT for BTC
+KRAKEN_SYMBOL_MAP = {
+    "BTCUSDT": "XBTUSDT",
+    "ETHUSDT": "ETHUSDT",
+    "XRPUSDT": "XRPUSDT",
+    "SOLUSDT": "SOLUSDT",
+    "AVAXUSDT": "AVAXUSDT",
+    "BNBUSDT": "BNBUSDT",
+    "DOGEUSDT": "DOGEUSDT",
+    "LINKUSDT": "LINKUSDT",
+}
 
-    while start_ms < end_ms:
+
+def fetch_recent_bars(symbol: str, n: int = 500) -> pd.DataFrame:
+    """Fetch recent H4 bars from Kraken (works from any IP, no auth required)."""
+    kraken_pair = KRAKEN_SYMBOL_MAP.get(symbol.upper(), symbol.upper())
+    since = int(datetime.now().timestamp()) - n * 4 * 3600  # n bars × 4h
+
+    url = "https://api.kraken.com/0/public/OHLC"
+    rows = []
+
+    # Kraken returns up to 720 bars per call; paginate via `since`
+    while True:
         r = requests.get(url, params={
-            "symbol": symbol, "interval": "4h",
-            "startTime": start_ms, "limit": 1000,
+            "pair": kraken_pair, "interval": 240, "since": since,
         }, timeout=15)
-        data = r.json()
-        if not data or isinstance(data, dict):
-            log(f"Binance API error or empty response: {data}")
+        body = r.json()
+
+        if body.get("error"):
+            log(f"Kraken API error: {body['error']}")
             break
-        rows.extend(data)
-        start_ms = data[-1][0] + 1
-        time.sleep(0.1)
+
+        result = body.get("result", {})
+        # result keys: the pair name + "last"
+        pair_key = next((k for k in result if k != "last"), None)
+        if pair_key is None:
+            break
+
+        batch = result[pair_key]
+        if not batch:
+            break
+
+        rows.extend(batch)
+        last_ts = result.get("last", 0)
+
+        # Kraken returns all available bars in one call when interval=240
+        # (max 720 bars). If we got fewer than 720, we're done.
+        if len(batch) < 720:
+            break
+        since = last_ts
+        time.sleep(0.5)
 
     if not rows:
         return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close"])
 
-    df = pd.DataFrame(rows, columns=[
-        "timestamp", "open", "high", "low", "close", "volume",
-        "close_time", "qv", "trades", "tbb", "tbq", "ignore",
-    ])
-    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+    # Kraken OHLC row: [time, open, high, low, close, vwap, volume, count]
+    df = pd.DataFrame(rows, columns=["timestamp", "open", "high", "low", "close", "vwap", "volume", "count"])
+    df["timestamp"] = pd.to_datetime(df["timestamp"].astype(int), unit="s")
     for c in ["open", "high", "low", "close"]:
         df[c] = df[c].astype(float)
-    return df[["timestamp", "open", "high", "low", "close"]].reset_index(drop=True)
+    return df[["timestamp", "open", "high", "low", "close"]].tail(n).reset_index(drop=True)
 
 
 def check_signal(df: pd.DataFrame, symbol: str, params: dict | None = None) -> dict:
