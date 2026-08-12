@@ -252,9 +252,18 @@ def main():
 
     sig = check_signal(df, symbol, params)
 
+    # Telegram always runs regardless of --json flag
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    if token and chat_id:
+        msg = format_telegram(sig)
+        if msg:
+            ok = send_telegram(token, chat_id, msg)
+            log(f"Telegram: {'sent ✓' if ok else 'failed ✗'}")
+
     if args.json:
         print(json.dumps(sig, indent=2))
-        return
+        sys.exit(0 if sig["signal"] != "NONE" else 1)
 
     print(f"\n{'='*40}")
     print(f"Signal  : {sig['signal']}")
@@ -269,15 +278,6 @@ def main():
     elif sig["signal"] == "ARMED":
         print(f"Range   : {sig['range_low']} → {sig['range_high']}")
     print(f"{'='*40}\n")
-
-    # Telegram (only if env vars are set)
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
-    if token and chat_id:
-        msg = format_telegram(sig)
-        if msg:
-            ok = send_telegram(token, chat_id, msg)
-            print(f"Telegram: {'sent ✓' if ok else 'failed ✗'}")
 
     # Exit code 0 = signal (ARMED or BREAKOUT), 1 = no signal
     # Lets GitHub Actions detect signals via step outcome
