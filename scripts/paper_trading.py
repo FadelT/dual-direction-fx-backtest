@@ -1,13 +1,14 @@
 """
 Paper trading engine — runs after each signal check.
 
-Reads signal JSONs produced by signal_check.py, updates paper_trades.json:
-  - Opens a new paper trade when a BREAKOUT fires (if no trade already open for that symbol)
-  - Checks open trades against the latest bar (high/low) to detect stop or TP hits
-  - Sends Telegram notifications on open/close events
-  - Commits updated paper_trades.json back to the repo
+- Opens trades on BREAKOUT (one per symbol, no duplicates)
+- Checks open trades against actual bar high/low for stop/TP
+- Enforces max hold of 96 bars (~16 days on H4) — closes at market if exceeded
+- Tracks capital with 5% risk per trade
+- Sends Telegram on open/close/error events
+- Writes updated state atomically to paper_trades.json
 
-Usage (called by GitHub Actions after signal jobs):
+Usage:
     python scripts/paper_trading.py --signals signal_XRPUSDT.json signal_BTCUSDT.json ...
 """
 
@@ -25,28 +26,51 @@ import requests
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from backtest import pip_size
 
-STATE_FILE = Path(__file__).parent.parent / "paper_trades.json"
+STATE_FILE    = Path(__file__).parent.parent / "paper_trades.json"
 RISK_PER_TRADE = 0.05   # 5% of capital per trade
 INITIAL_CAPITAL = 10_000.0
+MAX_HOLD_BARS   = 96    # matches backtest config — force-close after 16 days on H4
+BAR_SECONDS     = 4 * 3600
 
 
 def log(*args):
     print(*args, file=sys.stderr, flush=True)
 
 
-def send_telegram(token: str, chat_id: str, text: str) -> bool:
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    try:
-        r = requests.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}, timeout=10)
-        return r.status_code == 200
-    except Exception as e:
-        log(f"Telegram error: {e}")
-        return False
+# ── Telegram ────────────────────────────────────────────────────────────────
 
+def send_telegram(token: str, chat_id: str, text: str) -> bool:
+    for attempt in range(1, 4):
+        try:
+            r = requests.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+                timeout=10,
+            )
+            if r.status_code == 200:
+                return True
+            log(f"Telegram HTTP {r.status_code}")
+        except Exception as e:
+            log(f"Telegram attempt {attempt} failed: {e}")
+        if attempt < 3:
+            time.sleep(5)
+    return False
+
+
+def notify(token, chat_id, text):
+    if token and chat_id:
+        ok = send_telegram(token, chat_id, text)
+        log(f"Telegram: {'sent ✓' if ok else 'failed ✗'}")
+
+
+# ── State ────────────────────────────────────────────────────────────────────
 
 def load_state() -> dict:
     if STATE_FILE.exists():
-        return json.loads(STATE_FILE.read_text())
+        try:
+            return json.loads(STATE_FILE.read_text())
+        except Exception as e:
+            log(f"WARNING: could not parse state file: {e} — starting fresh")
     return {
         "open": [], "closed": [],
         "summary": {
@@ -58,221 +82,218 @@ def load_state() -> dict:
 
 
 def save_state(state: dict):
-    STATE_FILE.write_text(json.dumps(state, indent=2))
+    tmp = STATE_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, indent=2))
+    tmp.replace(STATE_FILE)  # atomic on POSIX
 
 
-def open_symbols(state: dict) -> set:
-    return {t["symbol"] for t in state["open"]}
+# ── Exit logic ───────────────────────────────────────────────────────────────
+
+def bars_elapsed(entry_time_str: str) -> int:
+    try:
+        entry_ts = datetime.fromisoformat(entry_time_str.replace(" ", "T"))
+        if entry_ts.tzinfo is None:
+            entry_ts = entry_ts.replace(tzinfo=timezone.utc)
+        elapsed_s = (datetime.now(timezone.utc) - entry_ts).total_seconds()
+        return int(elapsed_s / BAR_SECONDS)
+    except Exception:
+        return 0
 
 
-def check_bar_exit(trade: dict, bar: dict) -> tuple[str, float] | None:
+def check_exit(trade: dict, sig: dict) -> tuple[str, float] | None:
     """
-    Check if the latest bar (with high/low) triggers stop or TP.
+    Check the actual bar high/low (from signal JSON) for stop/TP.
     Returns (reason, exit_price) or None if still open.
     Conservative: stop checked before TP on same bar.
     """
     direction = trade["direction"]
     stop  = trade["stop"]
     tp    = trade["tp"]
-    high  = bar["high"]
-    low   = bar["low"]
+
+    # Use actual bar high/low — added to signal JSON in signal_check.py
+    bar_high = sig.get("bar_high") or sig.get("close")
+    bar_low  = sig.get("bar_low")  or sig.get("close")
+
+    if bar_high is None or bar_low is None:
+        return None
 
     if direction == "LONG":
-        if low <= stop:
+        if bar_low <= stop:
             return "STOP", stop
-        if high >= tp:
+        if bar_high >= tp:
             return "TAKE_PROFIT", tp
     else:
-        if high >= stop:
+        if bar_high >= stop:
             return "STOP", stop
-        if low <= tp:
+        if bar_low <= tp:
             return "TAKE_PROFIT", tp
+
+    # Max hold enforcement
+    if bars_elapsed(trade["entry_time"]) >= MAX_HOLD_BARS:
+        return "TIME", sig.get("close") or trade["entry_price"]
+
     return None
 
 
-def pips(price_diff: float, symbol: str) -> float:
-    return price_diff / pip_size(symbol)
+# ── Formatting ────────────────────────────────────────────────────────────────
 
-
-def format_open_msg(trade: dict) -> str:
+def fmt_open(trade: dict) -> str:
     arrow = "📈" if trade["direction"] == "LONG" else "📉"
-    capital = trade.get("capital_at_open", INITIAL_CAPITAL)
-    size = trade.get("size", 1.0)
     return (
-        f"{arrow} *PAPER TRADE OPENED — {trade['symbol']}*\n"
-        f"Direction: {trade['direction']}\n"
-        f"Entry: {trade['entry_price']}\n"
+        f"{arrow} *PAPER OPEN — {trade['symbol']}*\n"
+        f"{trade['direction']}  @  {trade['entry_price']}\n"
         f"Stop: {trade['stop']}  ({trade['stop_pips']:.0f} pips)\n"
-        f"TP: {trade['tp']}  (3R)\n"
-        f"Size: {size:.4f} units  |  Risk: ${trade['risk_dollar']:.0f}\n"
+        f"TP:   {trade['tp']}  (3R)\n"
+        f"Size: {trade['size']:.4f}  |  Risk: ${trade['risk_dollar']:.0f}\n"
         f"`{trade['entry_time']} UTC`"
     )
 
 
-def format_close_msg(trade: dict, exit_price: float, reason: str, pnl_pips: float, pnl_dollar: float, capital: float) -> str:
-    icon = "✅" if reason == "TAKE_PROFIT" else "❌"
+def fmt_close(trade: dict, exit_price: float, reason: str,
+              pnl_pips: float, pnl_dollar: float, capital: float) -> str:
+    icon = "✅" if pnl_dollar >= 0 else "❌"
     sign = "+" if pnl_pips >= 0 else ""
     return (
-        f"{icon} *PAPER TRADE CLOSED — {trade['symbol']}*\n"
-        f"Direction: {trade['direction']}  |  Reason: {reason}\n"
-        f"Entry: {trade['entry_price']}  →  Exit: {exit_price}\n"
+        f"{icon} *PAPER CLOSE — {trade['symbol']}*\n"
+        f"{trade['direction']}  |  {reason}\n"
+        f"Entry {trade['entry_price']}  →  Exit {exit_price}\n"
         f"P&L: {sign}{pnl_pips:.1f} pips  |  {sign}${pnl_dollar:.2f}\n"
         f"Capital: ${capital:,.2f}\n"
         f"`{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC`"
     )
 
 
-def format_summary_msg(state: dict) -> str:
-    s = state["summary"]
-    ret = (s["capital"] - s["initial_capital"]) / s["initial_capital"] * 100
-    wr = s["wins"] / s["total_trades"] * 100 if s["total_trades"] else 0
-    open_symbols = ", ".join(t["symbol"] for t in state["open"]) or "none"
-    return (
-        f"📊 *Paper Trading Summary*\n"
-        f"Capital: ${s['capital']:,.2f}  ({ret:+.1f}%)\n"
-        f"Trades: {s['total_trades']}  |  Win rate: {wr:.0f}%\n"
-        f"Net pips: {s['net_pips']:+.1f}\n"
-        f"Open positions: {open_symbols}"
-    )
-
+# ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--signals", nargs="+", required=True, help="Signal JSON files from signal_check.py")
-    p.add_argument("--bar-jsons", nargs="*", default=[], help="Latest bar JSON files (optional, for exit check)")
+    p.add_argument("--signals", nargs="+", required=True)
     args = p.parse_args()
 
     token   = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
 
-    def notify(text: str):
-        if token and chat_id:
-            ok = send_telegram(token, chat_id, text)
-            log(f"Telegram: {'sent ✓' if ok else 'failed ✗'}")
-
-    state = load_state()
-    events = []
-    changed = False
-
-    # --- 1. Load all signals ---
-    signals = {}
+    # Load signals — skip missing or malformed files gracefully
+    signals: dict[str, dict] = {}
     for f in args.signals:
+        path = Path(f)
+        if not path.exists():
+            log(f"Signal file not found: {f} — skipping")
+            continue
         try:
-            sig = json.loads(Path(f).read_text())
+            sig = json.loads(path.read_text())
+            if not isinstance(sig, dict) or "symbol" not in sig:
+                raise ValueError("unexpected format")
             signals[sig["symbol"]] = sig
         except Exception as e:
-            log(f"Could not read {f}: {e}")
+            log(f"Could not read {f}: {e} — skipping")
 
-    # --- 2. Check open trades for stop/TP against latest signal bar ---
+    if not signals:
+        log("No valid signal files — nothing to do")
+        sys.exit(0)
+
+    state   = load_state()
+    changed = False
+
+    # ── 1. Check open trades for exit ──────────────────────────────────────
     still_open = []
     for trade in state["open"]:
         symbol = trade["symbol"]
-        sig = signals.get(symbol)
-        if not sig or sig.get("close") is None:
+        sig    = signals.get(symbol)
+
+        if sig is None:
+            log(f"{symbol}: no signal this bar — keeping position open")
             still_open.append(trade)
             continue
 
-        # Approximate latest bar using signal close/range as proxy
-        # (signal_check already fetched latest bar data)
-        bar = {
-            "high": sig.get("range_high") or sig["close"],
-            "low":  sig.get("range_low")  or sig["close"],
-            "close": sig["close"],
-        }
-
-        result = check_bar_exit(trade, bar)
+        result = check_exit(trade, sig)
         if result is None:
             still_open.append(trade)
             continue
 
         reason, exit_price = result
-        PS = pip_size(symbol)
-        sign = 1.0 if trade["direction"] == "LONG" else -1.0
-        pnl_pips = sign * (exit_price - trade["entry_price"]) / PS
+        PS    = pip_size(symbol)
+        sign  = 1.0 if trade["direction"] == "LONG" else -1.0
+        pnl_pips   = sign * (exit_price - trade["entry_price"]) / PS
         pnl_dollar = pnl_pips * PS * trade["size"]
 
-        state["summary"]["capital"]    += pnl_dollar
-        state["summary"]["net_pips"]   += pnl_pips
+        state["summary"]["capital"]      += pnl_dollar
+        state["summary"]["net_pips"]     += pnl_pips
         state["summary"]["total_trades"] += 1
-        if pnl_pips > 0:
+        if pnl_dollar >= 0:
             state["summary"]["wins"] += 1
         else:
             state["summary"]["losses"] += 1
 
         trade.update({
-            "exit_price": exit_price,
-            "exit_time": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
+            "exit_price":  round(exit_price, 6),
+            "exit_time":   datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
             "exit_reason": reason,
-            "pnl_pips": round(pnl_pips, 1),
-            "pnl_dollar": round(pnl_dollar, 2),
-            "status": "closed",
+            "pnl_pips":    round(pnl_pips, 1),
+            "pnl_dollar":  round(pnl_dollar, 2),
+            "status":      "closed",
         })
         state["closed"].append(trade)
-        events.append(("close", trade, exit_price, reason, pnl_pips, pnl_dollar))
         changed = True
-        log(f"Closed {symbol} {reason}  pnl={pnl_pips:+.1f} pips  ${pnl_dollar:+.2f}")
+        log(f"Closed {symbol} {reason}  {pnl_pips:+.1f} pips  ${pnl_dollar:+.2f}")
+        notify(token, chat_id, fmt_close(
+            trade, exit_price, reason, pnl_pips, pnl_dollar, state["summary"]["capital"]
+        ))
 
     state["open"] = still_open
 
-    # --- 3. Open new trades on BREAKOUT (one position per symbol) ---
-    open_syms = open_symbols(state)
+    # ── 2. Open new trades on BREAKOUT ────────────────────────────────────
+    open_symbols = {t["symbol"] for t in state["open"]}
     for symbol, sig in signals.items():
         if sig.get("signal") != "BREAKOUT":
             continue
-        if symbol in open_syms:
-            log(f"{symbol}: already has an open trade, skipping")
+        if symbol in open_symbols:
+            log(f"{symbol}: position already open — skipping new entry")
             continue
 
-        capital = state["summary"]["capital"]
-        PS      = pip_size(symbol)
-        stop_px = abs(sig["entry_hint"] - sig["stop_hint"])
+        entry = sig.get("entry_hint")
+        stop  = sig.get("stop_hint")
+        tp    = sig.get("tp_hint")
+        if not all(isinstance(v, (int, float)) for v in [entry, stop, tp]):
+            log(f"{symbol}: invalid entry/stop/tp in signal — skipping")
+            continue
+
+        stop_px = abs(entry - stop)
         if stop_px <= 0:
+            log(f"{symbol}: stop_px=0 — skipping")
             continue
 
+        capital     = state["summary"]["capital"]
         risk_dollar = capital * RISK_PER_TRADE
-        size        = risk_dollar / stop_px
-        stop_pips   = stop_px / PS
+        PS          = pip_size(symbol)
 
         trade = {
             "id":              str(uuid.uuid4())[:8],
             "symbol":          symbol,
             "direction":       sig["direction"],
-            "entry_time":      sig["timestamp"],
-            "entry_price":     sig["entry_hint"],
-            "stop":            sig["stop_hint"],
-            "tp":              sig["tp_hint"],
-            "stop_pips":       round(stop_pips, 1),
-            "size":            round(size, 6),
+            "entry_time":      sig.get("timestamp", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")),
+            "entry_price":     entry,
+            "stop":            stop,
+            "tp":              tp,
+            "stop_pips":       round(stop_px / PS, 1),
+            "size":            round(risk_dollar / stop_px, 6),
             "risk_dollar":     round(risk_dollar, 2),
             "capital_at_open": round(capital, 2),
             "status":          "open",
         }
         state["open"].append(trade)
-        events.append(("open", trade))
+        open_symbols.add(symbol)
         changed = True
-        log(f"Opened {symbol} {sig['direction']} @ {sig['entry_hint']}  size={size:.4f}")
+        log(f"Opened {symbol} {sig['direction']} @ {entry}  size={trade['size']:.4f}")
+        notify(token, chat_id, fmt_open(trade))
 
-    # --- 4. Send Telegram notifications ---
-    for event in events:
-        if event[0] == "open":
-            notify(format_open_msg(event[1]))
-        else:
-            _, trade, exit_price, reason, pnl_pips, pnl_dollar = event
-            notify(format_close_msg(trade, exit_price, reason, pnl_pips, pnl_dollar, state["summary"]["capital"]))
-        time.sleep(0.5)
-
-    # Send summary if anything changed
-    if changed:
-        notify(format_summary_msg(state))
-
-    # --- 5. Save state ---
+    # ── 3. Save & report ──────────────────────────────────────────────────
     if changed:
         save_state(state)
         log("State saved.")
     else:
-        log("No changes.")
+        log("No changes this bar.")
 
-    # Print state for CI log
     print(json.dumps(state["summary"], indent=2))
 
 
