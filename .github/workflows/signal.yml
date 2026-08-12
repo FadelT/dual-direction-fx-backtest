@@ -1,0 +1,85 @@
+name: Signal Check (every 4h)
+
+on:
+  schedule:
+    # H4 bars close at 00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC
+    # Run 5 min after close to ensure bar is settled
+    - cron: "5 0,4,8,12,16,20 * * *"
+  workflow_dispatch:
+    inputs:
+      symbol:
+        description: "Symbol to check (leave empty to check all)"
+        required: false
+        default: ""
+
+jobs:
+  signal:
+    name: ${{ matrix.symbol }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        symbol: [XRPUSDT, BTCUSDT, SOLUSDT, AVAXUSDT]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check signal — ${{ matrix.symbol }}
+        id: signal
+        run: |
+          set +e   # don't fail on exit code 1 (no signal)
+          python scripts/signal_check.py \
+            --symbol "${{ matrix.symbol }}" \
+            --bars 500 \
+            --json > signal_${{ matrix.symbol }}.json
+          EXIT=$?
+          cat signal_${{ matrix.symbol }}.json
+          echo "exit_code=$EXIT" >> "$GITHUB_OUTPUT"
+
+          # Parse signal type for downstream steps
+          SIGNAL=$(python -c "import json,sys; d=json.load(open('signal_${{ matrix.symbol }}.json')); print(d['signal'])")
+          echo "signal=$SIGNAL" >> "$GITHUB_OUTPUT"
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+      - name: Write job summary
+        if: always()
+        run: |
+          SYMBOL="${{ matrix.symbol }}"
+          SIGNAL="${{ steps.signal.outputs.signal }}"
+
+          if [ "$SIGNAL" = "BREAKOUT" ]; then
+            ICON="🚨"
+          elif [ "$SIGNAL" = "ARMED" ]; then
+            ICON="⚡"
+          else
+            ICON="—"
+          fi
+
+          echo "## ${ICON} ${SYMBOL} — ${SIGNAL:-NO OUTPUT}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Bar close:** $(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -f "signal_${SYMBOL}.json" ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat "signal_${SYMBOL}.json" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload signal JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signal-${{ matrix.symbol }}-${{ github.run_id }}
+          path: signal_${{ matrix.symbol }}.json
+          retention-days: 7
