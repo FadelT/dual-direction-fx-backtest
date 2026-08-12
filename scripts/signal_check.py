@@ -26,6 +26,10 @@ import requests
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from backtest import BacktestConfig, enrich_features, pip_size
 
+# All diagnostic output goes to stderr so stdout stays clean for --json mode
+def log(*args, **kwargs):
+    print(*args, file=sys.stderr, flush=True, **kwargs)
+
 
 # Params that performed consistently well across CV walk-forward runs
 DEFAULT_PARAMS = {
@@ -44,8 +48,7 @@ def fetch_recent_bars(symbol: str, n: int = 500) -> pd.DataFrame:
     url = "https://api.binance.com/api/v3/klines"
     rows = []
     end_ms = int(datetime.now().timestamp() * 1000)
-    # Each H4 bar = 4h = 14_400_000 ms
-    start_ms = end_ms - n * 14_400_000
+    start_ms = end_ms - n * 14_400_000  # each H4 bar = 14_400_000 ms
 
     while start_ms < end_ms:
         r = requests.get(url, params={
@@ -54,10 +57,14 @@ def fetch_recent_bars(symbol: str, n: int = 500) -> pd.DataFrame:
         }, timeout=15)
         data = r.json()
         if not data or isinstance(data, dict):
+            log(f"Binance API error or empty response: {data}")
             break
         rows.extend(data)
         start_ms = data[-1][0] + 1
         time.sleep(0.1)
+
+    if not rows:
+        return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close"])
 
     df = pd.DataFrame(rows, columns=[
         "timestamp", "open", "high", "low", "close", "volume",
@@ -72,6 +79,14 @@ def fetch_recent_bars(symbol: str, n: int = 500) -> pd.DataFrame:
 def check_signal(df: pd.DataFrame, symbol: str, params: dict | None = None) -> dict:
     p = {**DEFAULT_PARAMS, **(params or {})}
     cfg = BacktestConfig(symbol=symbol, **p)
+
+    min_bars = cfg.compression_lookback_bars + cfg.range_bars + 2
+    if len(df) < min_bars:
+        log(f"Not enough bars: got {len(df)}, need {min_bars}")
+        return {"symbol": symbol, "signal": "NONE", "error": "insufficient_bars",
+                "direction": None, "entry_hint": None, "stop_hint": None,
+                "tp_hint": None, "stop_pips": None, "timestamp": None,
+                "close": None, "atr": None, "range_high": None, "range_low": None}
 
     x = enrich_features(df, cfg)
 
@@ -193,9 +208,12 @@ def main():
         from backtest import load_ohlc_csv
         df = load_ohlc_csv(args.csv)
     else:
-        print(f"Fetching last {args.bars} H4 bars for {symbol}...", flush=True)
+        log(f"Fetching last {args.bars} H4 bars for {symbol}...")
         df = fetch_recent_bars(symbol, n=args.bars)
-        print(f"  Got {len(df)} bars ({df.timestamp.iloc[0].date()} → {df.timestamp.iloc[-1].date()})")
+        if df.empty:
+            log("ERROR: no data returned from Binance")
+            sys.exit(2)
+        log(f"  Got {len(df)} bars ({df.timestamp.iloc[0].date()} → {df.timestamp.iloc[-1].date()})")
 
     params = None
     if args.params:

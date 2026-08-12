@@ -44,8 +44,8 @@ jobs:
           cat signal_${{ matrix.symbol }}.json
           echo "exit_code=$EXIT" >> "$GITHUB_OUTPUT"
 
-          # Parse signal type for downstream steps
-          SIGNAL=$(python -c "import json,sys; d=json.load(open('signal_${{ matrix.symbol }}.json')); print(d['signal'])")
+          # Parse signal type for downstream steps (default to ERROR if JSON is missing/invalid)
+          SIGNAL=$(python -c "import json; d=json.load(open('signal_${{ matrix.symbol }}.json')); print(d.get('signal','ERROR'))" 2>/dev/null || echo "ERROR")
           echo "signal=$SIGNAL" >> "$GITHUB_OUTPUT"
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
