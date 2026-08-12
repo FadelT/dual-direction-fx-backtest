@@ -1,0 +1,16 @@
+# Data files (regenerate with scripts)
+*.csv
+
+# Results
+results_*/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# IDE
+.qodo/
+.DS_Store
+plans/
