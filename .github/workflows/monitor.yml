@@ -1,0 +1,131 @@
+name: Performance Monitor
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # Every Monday at 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      symbols:
+        description: "Symbols to run (space-separated)"
+        required: false
+        default: "XRPUSDT BTCUSDT SOLUSDT AVAXUSDT"
+      risk:
+        description: "Risk per trade as fraction"
+        required: false
+        default: "0.05"
+      capital:
+        description: "Initial capital"
+        required: false
+        default: "10000"
+
+jobs:
+  monitor:
+    name: CV Walk-Forward — ${{ matrix.symbol }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        symbol: [XRPUSDT, BTCUSDT, SOLUSDT, AVAXUSDT]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download fresh H4 data
+        run: |
+          python - "${{ matrix.symbol }}" <<'PYEOF'
+          import sys, requests, time, pandas as pd
+          from datetime import datetime
+          from pathlib import Path
+
+          symbol = sys.argv[1]
+          out = Path("data/crypto/H4") / f"{symbol}_H4_full.csv"
+          out.parent.mkdir(parents=True, exist_ok=True)
+
+          url = "https://api.binance.com/api/v3/klines"
+          start_ms = int(pd.Timestamp("2018-01-01").timestamp() * 1000)
+          end_ms   = int(datetime.now().timestamp() * 1000)
+          rows = []
+
+          while start_ms < end_ms:
+              r = requests.get(url, params={
+                  "symbol": symbol, "interval": "4h",
+                  "startTime": start_ms, "limit": 1000
+              }, timeout=15)
+              data = r.json()
+              if not data or isinstance(data, dict):
+                  break
+              rows.extend(data)
+              start_ms = data[-1][0] + 1
+              time.sleep(0.12)
+
+          df = pd.DataFrame(rows, columns=[
+              "timestamp","open","high","low","close","volume",
+              "close_time","qv","trades","tbb","tbq","ignore"
+          ])
+          df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+          for c in ["open","high","low","close"]:
+              df[c] = df[c].astype(float)
+          df[["timestamp","open","high","low","close"]].to_csv(out, index=False)
+          print(f"Saved {len(df):,} bars → {out}  ({df.timestamp.min().date()} → {df.timestamp.max().date()})")
+          PYEOF
+
+      - name: Run CV walk-forward
+        run: |
+          python scripts/cv_walkforward.py \
+            --symbol "${{ matrix.symbol }}" \
+            --csv "data/crypto/H4/${{ matrix.symbol }}_H4_full.csv" \
+            --risk "${{ github.event.inputs.risk || '0.05' }}" \
+            --capital "${{ github.event.inputs.capital || '10000' }}" \
+            --out "results_${{ matrix.symbol }}.csv" \
+            | tee "cv_output_${{ matrix.symbol }}.txt"
+
+      - name: Write job summary
+        if: always()
+        run: |
+          SYMBOL="${{ matrix.symbol }}"
+          OUTPUT_FILE="cv_output_${SYMBOL}.txt"
+
+          echo "## ${SYMBOL} — CV Walk-Forward" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Run date:** $(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -f "$OUTPUT_FILE" ]; then
+            # OOS window table
+            echo "### OOS Windows" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Window | Trades | Win% | Net \$ | Capital | |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|--------|-------:|-----:|------:|---------:|--|" >> "$GITHUB_STEP_SUMMARY"
+            grep -E "\->" "$OUTPUT_FILE" | while IFS= read -r line; do
+              read -ra parts <<< "$line"
+              echo "| ${parts[0]} | ${parts[1]} | ${parts[2]} | ${parts[3]} | ${parts[4]} | ${parts[5]:-} |" >> "$GITHUB_STEP_SUMMARY"
+            done
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+
+            # Final summary block (lines after ====)
+            echo "### Final Summary" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            awk '/^={10,}/{found=1} found{print}' "$OUTPUT_FILE" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "_No output file found — run may have failed._" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ matrix.symbol }}
+          path: |
+            results_${{ matrix.symbol }}.csv
+            cv_output_${{ matrix.symbol }}.txt
+          retention-days: 90
