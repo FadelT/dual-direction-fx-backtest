@@ -44,7 +44,6 @@ jobs:
           cat signal_${{ matrix.symbol }}.json
           echo "exit_code=$EXIT" >> "$GITHUB_OUTPUT"
 
-          # Parse signal type for downstream steps (default to ERROR if JSON is missing/invalid)
           SIGNAL=$(python -c "import json; d=json.load(open('signal_${{ matrix.symbol }}.json')); print(d.get('signal','ERROR'))" 2>/dev/null || echo "ERROR")
           echo "signal=$SIGNAL" >> "$GITHUB_OUTPUT"
         env:
@@ -57,13 +56,9 @@ jobs:
           SYMBOL="${{ matrix.symbol }}"
           SIGNAL="${{ steps.signal.outputs.signal }}"
 
-          if [ "$SIGNAL" = "BREAKOUT" ]; then
-            ICON="🚨"
-          elif [ "$SIGNAL" = "ARMED" ]; then
-            ICON="⚡"
-          else
-            ICON="—"
-          fi
+          if [ "$SIGNAL" = "BREAKOUT" ]; then ICON="🚨"
+          elif [ "$SIGNAL" = "ARMED" ]; then ICON="⚡"
+          else ICON="—"; fi
 
           echo "## ${ICON} ${SYMBOL} — ${SIGNAL:-NO OUTPUT}" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -83,3 +78,55 @@ jobs:
           name: signal-${{ matrix.symbol }}-${{ github.run_id }}
           path: signal_${{ matrix.symbol }}.json
           retention-days: 7
+
+  paper-trade:
+    name: Paper Trading
+    runs-on: ubuntu-latest
+    needs: signal
+    if: always()
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download all signal JSONs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: signal-*-${{ github.run_id }}
+          merge-multiple: true
+
+      - name: Run paper trading engine
+        run: |
+          python scripts/paper_trading.py \
+            --signals signal_XRPUSDT.json signal_BTCUSDT.json signal_SOLUSDT.json signal_AVAXUSDT.json
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+      - name: Commit updated paper_trades.json
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main
+          git add paper_trades.json
+          git diff --cached --quiet || git commit -m "chore: update paper trades [skip ci]"
+          git push origin main
+
+      - name: Write paper trading summary
+        if: always()
+        run: |
+          echo "## 📊 Paper Trading" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat paper_trades.json >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

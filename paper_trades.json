@@ -1,0 +1,12 @@
+{
+  "open": [],
+  "closed": [],
+  "summary": {
+    "total_trades": 0,
+    "wins": 0,
+    "losses": 0,
+    "net_pips": 0.0,
+    "capital": 10000.0,
+    "initial_capital": 10000.0
+  }
+}
