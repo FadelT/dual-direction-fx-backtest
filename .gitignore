@@ -1,5 +1,10 @@
-# Data files (regenerate with scripts)
-*.csv
+# FX data (Yahoo Finance, small period)
+EURUSD_*.csv
+GBPUSD_*.csv
+USDJPY_*.csv
+AUDUSD_*.csv
+USDCAD_*.csv
+USDCHF_*.csv
 
 # Results
 results_*/
