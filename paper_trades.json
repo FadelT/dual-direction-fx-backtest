@@ -1,5 +1,34 @@
 {
-  "open": [],
+  "open": [
+    {
+      "id": "344b96b9",
+      "symbol": "BTCUSDT",
+      "direction": "SHORT",
+      "entry_time": "2026-08-12 04:00:00",
+      "entry_price": 63822.7,
+      "stop": 64360.970693,
+      "tp": 62207.88792,
+      "stop_pips": 538.3,
+      "size": 0.37156,
+      "risk_dollar": 200.0,
+      "capital_at_open": 10000.0,
+      "status": "open"
+    },
+    {
+      "id": "32319370",
+      "symbol": "AVAXUSDT",
+      "direction": "SHORT",
+      "entry_time": "2026-08-12 04:00:00",
+      "entry_price": 6.245,
+      "stop": 6.330258,
+      "tp": 5.989226,
+      "stop_pips": 852.6,
+      "size": 2345.82092,
+      "risk_dollar": 200.0,
+      "capital_at_open": 10000.0,
+      "status": "open"
+    }
+  ],
   "closed": [],
   "summary": {
     "total_trades": 0,
