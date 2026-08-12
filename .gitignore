@@ -1,10 +1,5 @@
-# FX data (Yahoo Finance, small period — excluded, use download_data.py)
-data/EURUSD_*.csv
-data/GBPUSD_*.csv
-data/USDJPY_*.csv
-data/AUDUSD_*.csv
-data/USDCAD_*.csv
-data/USDCHF_*.csv
+# FX data (Yahoo Finance, small period — excluded, use scripts/download_data.py)
+data/fx/
 
 # Results
 results_*/

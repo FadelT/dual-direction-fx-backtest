@@ -1,6 +1,9 @@
 """
 Download H4 OHLC data from Binance (free, no API key required).
-Saves one CSV per symbol in the current directory.
+Saves one CSV per symbol under data/crypto/H4/.
+
+Usage:
+    python scripts/download_data.py
 """
 
 import requests
@@ -21,6 +24,7 @@ SYMBOLS = [
 ]
 
 START_DATE = "2018-01-01"
+OUT_DIR = Path(__file__).parent.parent / "data" / "crypto" / "H4"
 
 
 def fetch_binance_h4(symbol: str, start_str: str = START_DATE) -> pd.DataFrame:
@@ -54,8 +58,9 @@ def fetch_binance_h4(symbol: str, start_str: str = START_DATE) -> pd.DataFrame:
 
 
 def main():
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
     for symbol in SYMBOLS:
-        out = Path(f"{symbol}_H4_full.csv")
+        out = OUT_DIR / f"{symbol}_H4_full.csv"
         print(f"Downloading {symbol}...", end=" ", flush=True)
         df = fetch_binance_h4(symbol)
         df.to_csv(out, index=False)

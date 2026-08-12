@@ -9,7 +9,7 @@ For each OOS window of 6 months:
 Score: expectancy_pips * sqrt(trades)  — penalizes high-variance low-sample combos
 
 Usage:
-    python cv_walkforward.py --symbol XRPUSDT --csv XRPUSDT_H4_full.csv --risk 0.05
+    python scripts/cv_walkforward.py --symbol XRPUSDT --csv data/crypto/H4/XRPUSDT_H4_full.csv --risk 0.05
 """
 
 import argparse
@@ -20,8 +20,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).parent))
-from dual_direction_backtest import (
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from backtest import (
     BacktestConfig,
     backtest,
     load_ohlc_csv,
@@ -94,7 +94,6 @@ def run(symbol: str, df: pd.DataFrame, risk_pct: float, initial_capital: float):
     all_records = []
 
     for is_splits, oos_start, oos_end in windows:
-        # Cross-validation: score each combo on all 3 IS folds
         scores: dict[tuple, float] = {}
         for combo in combos:
             params = dict(zip(keys, combo))
@@ -114,7 +113,6 @@ def run(symbol: str, df: pd.DataFrame, risk_pct: float, initial_capital: float):
 
         best_params = dict(zip(keys, max(scores, key=scores.get)))
 
-        # OOS evaluation
         df_test = df[(df["timestamp"] >= oos_start) & (df["timestamp"] < oos_end)].reset_index(drop=True)
         if len(df_test) < 30:
             continue
