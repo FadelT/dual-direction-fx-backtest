@@ -121,7 +121,10 @@ jobs:
           if git diff --quiet paper_trades.json; then
             echo "No changes to commit."
           else
+            cp paper_trades.json /tmp/paper_trades_new.json
+            git checkout paper_trades.json
             git pull --rebase origin main
+            cp /tmp/paper_trades_new.json paper_trades.json
             git add paper_trades.json
             git commit -m "chore: paper trades update [skip ci]"
             git push origin main
