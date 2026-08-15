@@ -29,17 +29,17 @@
       "status": "open"
     },
     {
-      "id": "81a2e589",
+      "id": "f75e206b",
       "symbol": "AVAXUSDT",
       "direction": "LONG",
-      "entry_time": "2026-08-15 00:00:00",
-      "entry_price": 6.774,
-      "stop": 6.672313,
-      "tp": 7.079061,
+      "entry_time": "2026-08-15 04:00:00",
+      "entry_price": 6.642,
+      "stop": 6.540313,
+      "tp": 6.947061,
       "stop_pips": 1016.9,
-      "size": 4671.196908,
-      "risk_dollar": 475.0,
-      "capital_at_open": 9500.0,
+      "size": 4437.637063,
+      "risk_dollar": 451.25,
+      "capital_at_open": 9025.0,
       "status": "open"
     }
   ],
@@ -62,14 +62,33 @@
       "exit_reason": "STOP",
       "pnl_pips": -852.6,
       "pnl_dollar": -500.0
+    },
+    {
+      "id": "81a2e589",
+      "symbol": "AVAXUSDT",
+      "direction": "LONG",
+      "entry_time": "2026-08-15 00:00:00",
+      "entry_price": 6.774,
+      "stop": 6.672313,
+      "tp": 7.079061,
+      "stop_pips": 1016.9,
+      "size": 4671.196908,
+      "risk_dollar": 475.0,
+      "capital_at_open": 9500.0,
+      "status": "closed",
+      "exit_price": 6.672313,
+      "exit_time": "2026-08-15 08:39",
+      "exit_reason": "STOP",
+      "pnl_pips": -1016.9,
+      "pnl_dollar": -475.0
     }
   ],
   "summary": {
-    "total_trades": 1,
+    "total_trades": 2,
     "wins": 0,
-    "losses": 1,
-    "net_pips": -852.5799999999961,
-    "capital": 9500.000000006603,
+    "losses": 2,
+    "net_pips": -1869.4499999999969,
+    "capital": 9025.000000022806,
     "initial_capital": 10000.0
   }
 }
