@@ -27,6 +27,20 @@
       "risk_dollar": 475.0,
       "capital_at_open": 9500.0,
       "status": "open"
+    },
+    {
+      "id": "058638f6",
+      "symbol": "AVAXUSDT",
+      "direction": "SHORT",
+      "entry_time": "2026-08-16 16:00:00",
+      "entry_price": 6.341,
+      "stop": 6.442687,
+      "tp": 6.035939,
+      "stop_pips": 1016.9,
+      "size": 4004.967449,
+      "risk_dollar": 407.25,
+      "capital_at_open": 8145.06,
+      "status": "open"
     }
   ],
   "closed": [
