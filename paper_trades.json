@@ -1,20 +1,6 @@
 {
   "open": [
     {
-      "id": "344b96b9",
-      "symbol": "BTCUSDT",
-      "direction": "SHORT",
-      "entry_time": "2026-08-12 04:00:00",
-      "entry_price": 63822.7,
-      "stop": 64360.970693,
-      "tp": 62207.88792,
-      "stop_pips": 538.3,
-      "size": 0.928901,
-      "risk_dollar": 500.0,
-      "capital_at_open": 10000.0,
-      "status": "open"
-    },
-    {
       "id": "876b85c1",
       "symbol": "XRPUSDT",
       "direction": "SHORT",
@@ -54,6 +40,20 @@
       "size": 445.644508,
       "risk_dollar": 407.25,
       "capital_at_open": 8145.06,
+      "status": "open"
+    },
+    {
+      "id": "0e9eacc3",
+      "symbol": "BTCUSDT",
+      "direction": "LONG",
+      "entry_time": "2026-08-17 16:00:00",
+      "entry_price": 64306.1,
+      "stop": 63843.67858,
+      "tp": 65693.364259,
+      "stop_pips": 462.4,
+      "size": 0.826634,
+      "risk_dollar": 382.25,
+      "capital_at_open": 7645.06,
       "status": "open"
     }
   ],
@@ -133,14 +133,33 @@
       "exit_reason": "STOP",
       "pnl_pips": -1016.9,
       "pnl_dollar": -428.69
+    },
+    {
+      "id": "344b96b9",
+      "symbol": "BTCUSDT",
+      "direction": "SHORT",
+      "entry_time": "2026-08-12 04:00:00",
+      "entry_price": 63822.7,
+      "stop": 64360.970693,
+      "tp": 62207.88792,
+      "stop_pips": 538.3,
+      "size": 0.928901,
+      "risk_dollar": 500.0,
+      "capital_at_open": 10000.0,
+      "status": "closed",
+      "exit_price": 64360.970693,
+      "exit_time": "2026-08-17 20:36",
+      "exit_reason": "STOP",
+      "pnl_pips": -538.3,
+      "pnl_dollar": -500.0
     }
   ],
   "summary": {
-    "total_trades": 4,
+    "total_trades": 5,
     "wins": 0,
-    "losses": 4,
-    "net_pips": -3903.1899999999987,
-    "capital": 8145.062499958254,
+    "losses": 5,
+    "net_pips": -4441.4606930000045,
+    "capital": 7645.062314959856,
     "initial_capital": 10000.0
   }
 }
