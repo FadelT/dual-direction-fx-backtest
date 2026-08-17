@@ -41,6 +41,20 @@
       "risk_dollar": 407.25,
       "capital_at_open": 8145.06,
       "status": "open"
+    },
+    {
+      "id": "787bcb2c",
+      "symbol": "SOLUSDT",
+      "direction": "LONG",
+      "entry_time": "2026-08-17 12:00:00",
+      "entry_price": 76.1,
+      "stop": 75.186148,
+      "tp": 78.841556,
+      "stop_pips": 9138.5,
+      "size": 445.644508,
+      "risk_dollar": 407.25,
+      "capital_at_open": 8145.06,
+      "status": "open"
     }
   ],
   "closed": [
