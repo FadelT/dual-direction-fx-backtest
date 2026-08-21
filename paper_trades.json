@@ -43,17 +43,17 @@
       "status": "open"
     },
     {
-      "id": "c998781e",
+      "id": "ad905287",
       "symbol": "XRPUSDT",
       "direction": "LONG",
-      "entry_time": "2026-08-20 16:00:00",
-      "entry_price": 1.23315,
-      "stop": 1.222696,
-      "tp": 1.264512,
+      "entry_time": "2026-08-20 20:00:00",
+      "entry_price": 1.26879,
+      "stop": 1.258336,
+      "tp": 1.300152,
       "stop_pips": 104.5,
-      "size": 72962.051751,
-      "risk_dollar": 762.75,
-      "capital_at_open": 15254.91,
+      "size": 83906.359514,
+      "risk_dollar": 877.16,
+      "capital_at_open": 17543.14,
       "status": "open"
     }
   ],
@@ -551,14 +551,33 @@
       "exit_reason": "STOP",
       "pnl_pips": -104.5,
       "pnl_dollar": -802.89
+    },
+    {
+      "id": "c998781e",
+      "symbol": "XRPUSDT",
+      "direction": "LONG",
+      "entry_time": "2026-08-20 16:00:00",
+      "entry_price": 1.23315,
+      "stop": 1.222696,
+      "tp": 1.264512,
+      "stop_pips": 104.5,
+      "size": 72962.051751,
+      "risk_dollar": 762.75,
+      "capital_at_open": 15254.91,
+      "status": "closed",
+      "exit_price": 1.264512,
+      "exit_time": "2026-08-21 01:51",
+      "exit_reason": "TAKE_PROFIT",
+      "pnl_pips": 313.6,
+      "pnl_dollar": 2288.24
     }
   ],
   "summary": {
-    "total_trades": 26,
-    "wins": 10,
+    "total_trades": 27,
+    "wins": 11,
     "losses": 16,
-    "net_pips": 66572.21924399995,
-    "capital": 15254.905780174211,
+    "net_pips": 66885.83924399994,
+    "capital": 17543.14164718908,
     "initial_capital": 10000.0
   }
 }
