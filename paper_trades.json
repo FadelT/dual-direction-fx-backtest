@@ -1,20 +1,6 @@
 {
   "open": [
     {
-      "id": "e5fdd5f4",
-      "symbol": "XRPUSDT",
-      "direction": "LONG",
-      "entry_time": "2026-08-22 08:00:00",
-      "entry_price": 1.48567,
-      "stop": 1.475216,
-      "tp": 1.517032,
-      "stop_pips": 104.5,
-      "size": 219585.993761,
-      "risk_dollar": 2295.55,
-      "capital_at_open": 45911.04,
-      "status": "open"
-    },
-    {
       "id": "2725aec1",
       "symbol": "AVAXUSDT",
       "direction": "LONG",
@@ -26,6 +12,20 @@
       "size": 24060.876452,
       "risk_dollar": 2295.55,
       "capital_at_open": 45911.04,
+      "status": "open"
+    },
+    {
+      "id": "4856db9f",
+      "symbol": "XRPUSDT",
+      "direction": "LONG",
+      "entry_time": "2026-08-22 12:00:00",
+      "entry_price": 1.43844,
+      "stop": 1.427986,
+      "tp": 1.469802,
+      "stop_pips": 104.5,
+      "size": 208606.694073,
+      "risk_dollar": 2180.77,
+      "capital_at_open": 43615.49,
       "status": "open"
     }
   ],
@@ -903,14 +903,33 @@
       "exit_reason": "STOP",
       "pnl_pips": -954.1,
       "pnl_dollar": -2550.61
+    },
+    {
+      "id": "e5fdd5f4",
+      "symbol": "XRPUSDT",
+      "direction": "LONG",
+      "entry_time": "2026-08-22 08:00:00",
+      "entry_price": 1.48567,
+      "stop": 1.475216,
+      "tp": 1.517032,
+      "stop_pips": 104.5,
+      "size": 219585.993761,
+      "risk_dollar": 2295.55,
+      "capital_at_open": 45911.04,
+      "status": "closed",
+      "exit_price": 1.475216,
+      "exit_time": "2026-08-22 16:34",
+      "exit_reason": "STOP",
+      "pnl_pips": -104.5,
+      "pnl_dollar": -2295.55
     }
   ],
   "summary": {
-    "total_trades": 46,
+    "total_trades": 47,
     "wins": 22,
-    "losses": 24,
-    "net_pips": 130947.59776199982,
-    "capital": 45911.039575466086,
+    "losses": 25,
+    "net_pips": 130843.05776199982,
+    "capital": 43615.4875966886,
     "initial_capital": 10000.0
   }
 }
